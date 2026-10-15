@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-ink: #18251f;
+  --color-leaf: #194a3b;
+  --color-mint: #e7eee4;
+  --color-paper: #f7f8f3;
+  --color-coral: #c95039;
+  --color-sun: #f0c64e;
+  --color-muted: #66736a;
+  --font-sans: var(--font-brand-sans);
+  --font-display: var(--font-brand-display);
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: #f7f8f3;
+  color: #18251f;
+}
+
+::selection {
+  background: #f0c64e;
+  color: #18251f;
+}
