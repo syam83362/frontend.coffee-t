@@ -3,7 +3,7 @@ const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 export interface Account {
   id: string;
   email: string;
-  role: 'customer' | 'admin';
+  role: 'customer' | 'admin' | 'cafe_manager' | 'waiter';
 }
 
 export interface AuthResponse {

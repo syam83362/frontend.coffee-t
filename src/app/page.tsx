@@ -1,12 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { ArrowDownRight, ArrowUpRight, UserRound } from 'lucide-react';
+import { CatalogueSection } from '../components/catalogue-section';
 
 const coffeeImage =
   'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=2200&q=85';
-const teaImage =
-  'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=1400&q=85';
-
 export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-paper text-ink">
@@ -23,6 +21,7 @@ export default function HomePage() {
           <a className="transition-colors hover:text-coral" href="#coffee">Coffee</a>
           <a className="transition-colors hover:text-coral" href="#tea">Tea</a>
           <a className="transition-colors hover:text-coral" href="#story">Our roots</a>
+          <Link className="transition-colors hover:text-coral" href="/cafe">Find a café</Link>
         </nav>
         <Link
           className="inline-flex min-h-11 items-center gap-2 border border-ink/15 px-4 text-sm font-semibold transition-colors hover:border-leaf hover:bg-leaf hover:text-white"
@@ -71,60 +70,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1440px] px-5 pb-20 pt-20 sm:px-8 sm:pb-28 sm:pt-28 lg:px-14" id="collections">
-        <div className="mb-9 flex flex-col justify-between gap-5 sm:mb-12 sm:flex-row sm:items-end">
-          <div>
-            <p className="mb-3 text-[11px] font-bold uppercase text-coral">The good stuff</p>
-            <h2 className="font-display text-[43px] leading-none sm:text-[56px]">Choose your ritual.</h2>
-          </div>
-          <p className="max-w-[330px] text-sm leading-6 text-muted">
-            Two paths through India&apos;s most loved growing regions. Your next favourite starts here.
-          </p>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2 md:gap-6">
-          <a className="group relative min-h-[370px] overflow-hidden bg-leaf sm:min-h-[460px]" href="#coffee" id="coffee">
-            <Image
-              alt="A cup of freshly brewed coffee on a wooden table"
-              className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              src="https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=85"
-            />
-            <div className="absolute inset-0 bg-ink/30 transition-colors group-hover:bg-ink/40" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-6 text-white sm:p-9">
-              <div>
-                <p className="mb-2 text-[10px] font-bold uppercase text-sun">From the highlands</p>
-                <h3 className="font-display text-[44px] leading-none sm:text-[54px]">Coffee</h3>
-              </div>
-              <span className="grid size-12 place-items-center border border-white/60 transition-colors group-hover:bg-sun group-hover:text-ink">
-                <ArrowUpRight size={20} strokeWidth={1.8} aria-hidden="true" />
-              </span>
-            </div>
-          </a>
-
-          <a className="group relative min-h-[370px] overflow-hidden bg-leaf sm:min-h-[460px]" href="#tea" id="tea">
-            <Image
-              alt="A glass of tea with delicate leaves and warm light"
-              className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              src={teaImage}
-            />
-            <div className="absolute inset-0 bg-ink/30 transition-colors group-hover:bg-ink/40" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-6 text-white sm:p-9">
-              <div>
-                <p className="mb-2 text-[10px] font-bold uppercase text-sun">Leaves with a story</p>
-                <h3 className="font-display text-[44px] leading-none sm:text-[54px]">Tea</h3>
-              </div>
-              <span className="grid size-12 place-items-center border border-white/60 transition-colors group-hover:bg-sun group-hover:text-ink">
-                <ArrowUpRight size={20} strokeWidth={1.8} aria-hidden="true" />
-              </span>
-            </div>
-          </a>
-        </div>
-        <p className="mt-4 text-xs text-muted">Collection browsing and product details are coming in the next development phase.</p>
-      </section>
+      <CatalogueSection />
 
       <section className="bg-mint px-5 py-16 sm:px-8 sm:py-20 lg:px-14" id="story">
         <div className="mx-auto grid max-w-[1440px] gap-8 md:grid-cols-[1fr_1.3fr] md:items-end">

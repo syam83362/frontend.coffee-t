@@ -14,6 +14,7 @@ import {
   refreshSession,
   register,
 } from '@/lib/auth-api';
+import { AccountDashboard } from './account-dashboard';
 
 type AuthMode = 'login' | 'register';
 const accountImage =
@@ -148,21 +149,12 @@ export function AuthPanel() {
 
         <div className="mx-auto flex w-full max-w-[430px] flex-1 flex-col justify-center py-12">
           {account ? (
-            <div>
-              <p className="mb-3 text-[11px] font-bold uppercase text-coral">Your account</p>
-              <h2 className="font-display text-[44px] leading-tight">Welcome back.</h2>
-              <p className="mt-5 text-base text-muted">{account.email}</p>
-              <p className="mt-3 inline-flex bg-mint px-3 py-1.5 text-[10px] font-bold uppercase text-leaf">{account.role}</p>
-              {error && <p className="mt-5 text-sm text-coral" role="alert">{error}</p>}
-              <button
-                className="mt-8 inline-flex min-h-12 items-center gap-3 bg-leaf px-6 text-sm font-bold text-white transition-colors hover:bg-ink disabled:cursor-not-allowed disabled:opacity-60"
-                onClick={handleLogout}
-                disabled={busy}
-              >
-                {busy ? 'Signing out…' : 'Sign out'}
-                <ArrowUpRight size={17} aria-hidden="true" />
-              </button>
-            </div>
+            <AccountDashboard
+              account={account}
+              csrfToken={csrfToken ?? ''}
+              busy={busy}
+              onLogout={handleLogout}
+            />
           ) : (
             <>
               <div className="mb-8">
