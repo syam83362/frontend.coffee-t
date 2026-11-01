@@ -1,4 +1,4 @@
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+import { apiRequest } from './api';
 
 export interface CartItem {
   variantId: string;
@@ -32,7 +32,7 @@ export interface CustomerOrder {
   status: string;
   fulfillmentType: 'delivery' | 'dine_in' | 'assisted_dine_in';
   totalPaise: number;
-  deliveryAddressSnapshot: Record<string, string | null>;
+  deliveryAddressSnapshot: Record<string, string | null> | null;
   createdAt: string;
   items: Array<{
     id: string;
@@ -44,14 +44,14 @@ export interface CustomerOrder {
   }>;
 }
 
-  export interface PaymentAttempt {
-    id: string;
-    orderId: string;
-    provider: 'development';
-    status: 'pending' | 'succeeded' | 'failed' | 'refunded';
-    amountPaise: number;
-    developmentSimulationAvailable: boolean;
-  }
+export interface PaymentAttempt {
+  id: string;
+  orderId: string;
+  provider: 'development';
+  status: 'pending' | 'succeeded' | 'failed' | 'expired' | 'refunded';
+  amountPaise: number;
+  developmentSimulationAvailable: boolean;
+}
 
 export interface AddressInput {
   recipientName: string;
@@ -64,102 +64,48 @@ export interface AddressInput {
 }
 
 export function getCart(): Promise<Cart> {
-  return request('/cart');
+  return apiRequest('/cart');
 }
 
-export function addCartItem(variantId: string, quantity: number, csrfToken: string): Promise<Cart> {
-  return request(`/cart/items/${variantId}`, {
-    method: 'POST',
-    body: JSON.stringify({ quantity }),
-    csrfToken,
-  });
+export function addCartItem(variantId: string, quantity: number): Promise<Cart> {
+  return apiRequest(`/cart/items/${variantId}`, { method: 'POST', body: { quantity } });
 }
 
-export function setCartItem(variantId: string, quantity: number, csrfToken: string): Promise<Cart> {
-  return request(`/cart/items/${variantId}`, {
-    method: 'PUT',
-    body: JSON.stringify({ quantity }),
-    csrfToken,
-  });
+export function setCartItem(variantId: string, quantity: number): Promise<Cart> {
+  return apiRequest(`/cart/items/${variantId}`, { method: 'PUT', body: { quantity } });
 }
 
-export function removeCartItem(variantId: string, csrfToken: string): Promise<void> {
-  return request(`/cart/items/${variantId}`, { method: 'DELETE', csrfToken });
+export function removeCartItem(variantId: string): Promise<Cart | undefined> {
+  return apiRequest(`/cart/items/${variantId}`, { method: 'DELETE' });
 }
 
 export function getAddresses(): Promise<DeliveryAddress[]> {
-  return request('/addresses');
+  return apiRequest('/addresses');
 }
 
-export function createAddress(input: AddressInput, csrfToken: string): Promise<DeliveryAddress> {
-  return request('/addresses', { method: 'POST', body: JSON.stringify(input), csrfToken });
+export function createAddress(input: AddressInput): Promise<DeliveryAddress> {
+  return apiRequest('/addresses', { method: 'POST', body: input });
 }
 
-export function checkout(addressId: string, csrfToken: string): Promise<CustomerOrder> {
-  return request('/orders/checkout', {
-    method: 'POST',
-    body: JSON.stringify({ addressId }),
-    csrfToken,
-  });
+export function checkout(addressId: string): Promise<CustomerOrder> {
+  return apiRequest('/orders/checkout', { method: 'POST', body: { addressId } });
 }
 
 export function getOrders(): Promise<CustomerOrder[]> {
-  return request('/orders');
+  return apiRequest('/orders');
 }
 
-export function startPayment(orderId: string, idempotencyKey: string, csrfToken: string): Promise<PaymentAttempt> {
-  return request(`/orders/${orderId}/payments`, {
-    method: 'POST',
-    body: JSON.stringify({ idempotencyKey }),
-    csrfToken,
-  });
+export function startPayment(orderId: string, idempotencyKey: string): Promise<PaymentAttempt> {
+  return apiRequest(`/orders/${orderId}/payments`, { method: 'POST', body: { idempotencyKey } });
 }
 
 export function resolveDevelopmentPayment(
   orderId: string,
   attemptId: string,
   outcome: 'success' | 'failure',
-  csrfToken: string,
 ): Promise<PaymentAttempt> {
-  return request(`/orders/${orderId}/payments/${attemptId}/development-resolution`, {
+  return apiRequest(`/orders/${orderId}/payments/${attemptId}/development-resolution`, {
     method: 'POST',
-    body: JSON.stringify({ outcome }),
-    csrfToken,
+    body: { outcome },
   });
-}
-
-async function request<T>(
-  path: string,
-  options: {
-    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    body?: string;
-    csrfToken?: string;
-  } = {},
-): Promise<T> {
-  const headers = new Headers();
-  if (options.body) headers.set('Content-Type', 'application/json');
-  if (options.csrfToken) headers.set('X-CSRF-Token', options.csrfToken);
-
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers,
-    body: options.body,
-    credentials: 'include',
-    cache: 'no-store',
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (response.status === 204) return undefined as T;
-
-  const payload: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(readErrorMessage(payload));
-  return payload as T;
-}
-
-function readErrorMessage(payload: unknown): string {
-  if (typeof payload === 'object' && payload !== null && 'message' in payload) {
-    const { message } = payload;
-    if (Array.isArray(message)) return message.join(' ');
-    if (typeof message === 'string') return message;
-  }
-  return 'The request could not be completed.';
 }

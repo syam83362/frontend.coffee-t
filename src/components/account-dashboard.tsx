@@ -1,56 +1,72 @@
 'use client';
 
-import Link from 'next/link';
-import { FormEvent, useEffect, useState } from 'react';
-import { ArrowUpRight, Minus, Plus, Trash2 } from 'lucide-react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { CalendarDays, LogOut, MapPin, Package, ShoppingBag, Trash2 } from 'lucide-react';
+import { apiRequest, errorMessage } from '@/lib/api';
+import { cancelReservation, getMyReservations, Reservation } from '@/lib/cafe-api';
+import { formatDate, formatDateTime, formatPaise } from '@/lib/format';
 import {
   AddressInput,
   Cart,
-  CustomerOrder,
-  DeliveryAddress,
-  addCartItem,
   checkout,
   createAddress,
+  CustomerOrder,
+  DeliveryAddress,
   getAddresses,
   getCart,
   getOrders,
   PaymentAttempt,
-  resolveDevelopmentPayment,
   removeCartItem,
+  resolveDevelopmentPayment,
   setCartItem,
   startPayment,
 } from '@/lib/order-api';
-import { Account } from '@/lib/auth-api';
-import { cancelReservation, getMyReservations, Reservation } from '@/lib/cafe-api';
+import { useSession } from './session-provider';
+import { useToast } from './toast';
+import {
+  Alert,
+  Badge,
+  Button,
+  ButtonLink,
+  Card,
+  cx,
+  EmptyState,
+  QuantityStepper,
+  Skeleton,
+  StatusBadge,
+  Tabs,
+  TextField,
+} from './ui';
 
-const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' });
+type Tab = 'basket' | 'orders' | 'reservations' | 'addresses';
+const TABS: Tab[] = ['basket', 'orders', 'reservations', 'addresses'];
 
-export function AccountDashboard({
-  account,
-  csrfToken,
-  busy,
-  onLogout,
-}: {
-  account: Account;
-  csrfToken: string;
-  busy: boolean;
-  onLogout: () => void;
-}) {
+export function AccountDashboard() {
+  const { user, signOut, syncCart } = useSession();
+  const toast = useToast();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const requested = searchParams.get('tab') as Tab | null;
+  const tab: Tab = requested && TABS.includes(requested) ? requested : 'basket';
+
   const [cart, setCart] = useState<Cart | null>(null);
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([]);
   const [orders, setOrders] = useState<CustomerOrder[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [selectedAddressId, setSelectedAddressId] = useState('');
-  const [addingAddress, setAddingAddress] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [paymentAttempts, setPaymentAttempts] = useState<Record<string, PaymentAttempt>>({});
+  const [loadError, setLoadError] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
+  const [highlightOrderId, setHighlightOrderId] = useState('');
 
-  async function reload(): Promise<void> {
-    setLoading(true);
-    setError('');
+  const setTab = useCallback(
+    (next: Tab) => router.replace(`${pathname}?tab=${next}`, { scroll: false }),
+    [router, pathname],
+  );
+
+  const load = useCallback(async () => {
+    setLoadError('');
     try {
       const [nextCart, nextAddresses, nextOrders, nextReservations] = await Promise.all([
         getCart(),
@@ -62,312 +78,639 @@ export function AccountDashboard({
       setAddresses(nextAddresses);
       setOrders(nextOrders);
       setReservations(nextReservations);
-      setSelectedAddressId((current) => current || nextAddresses[0]?.id || '');
+      void syncCart(nextCart);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Your account could not be loaded.');
+      setLoadError(errorMessage(requestError, 'Your account could not be loaded.'));
     } finally {
       setLoading(false);
     }
-  }
-
-  async function cancelBooking(reservationId: string): Promise<void> {
-    setSaving(true);
-    setError('');
-    try {
-      const updated = await cancelReservation(reservationId, csrfToken);
-      setReservations((current) => current.map((reservation) => reservation.id === updated.id ? updated : reservation));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'The reservation could not be cancelled.');
-    } finally {
-      setSaving(false);
-    }
-  }
+  }, [syncCart]);
 
   useEffect(() => {
-    void reload();
-  }, []);
+    void load();
+  }, [load]);
 
-  async function changeQuantity(variantId: string, quantity: number): Promise<void> {
-    if (!cart) return;
-    setSaving(true);
-    setError('');
+  async function handleSignOut(): Promise<void> {
+    setSigningOut(true);
     try {
-      const nextCart = quantity <= 0
-        ? (await removeCartItem(variantId, csrfToken), await getCart())
-        : await setCartItem(variantId, quantity, csrfToken);
-      setCart(nextCart);
+      await signOut();
+      router.replace('/account');
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'The cart could not be updated.');
+      toast.show(errorMessage(requestError), 'danger');
     } finally {
-      setSaving(false);
+      setSigningOut(false);
     }
   }
 
-  async function saveAddress(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const input = Object.fromEntries(formData.entries()) as unknown as AddressInput;
-    setSaving(true);
-    setError('');
-    try {
-      const address = await createAddress(input, csrfToken);
-      setAddresses((current) => [address, ...current]);
-      setSelectedAddressId(address.id);
-      setAddingAddress(false);
-      form.reset();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'The address could not be saved.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function submitCheckout(): Promise<void> {
-    setSaving(true);
-    setError('');
-    setNotice('');
-    try {
-      const order = await checkout(selectedAddressId, csrfToken);
-      setNotice(`Order ${order.id.slice(0, 8).toUpperCase()} created and awaiting payment.`);
-      await reload();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Checkout could not be completed.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function beginPayment(orderId: string): Promise<void> {
-    setSaving(true);
-    setError('');
-    try {
-      const attempt = await startPayment(orderId, crypto.randomUUID(), csrfToken);
-      setPaymentAttempts((current) => ({ ...current, [orderId]: attempt }));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Payment could not be started.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function resolvePayment(orderId: string, outcome: 'success' | 'failure'): Promise<void> {
-    const attempt = paymentAttempts[orderId];
-    if (!attempt) return;
-    setSaving(true);
-    setError('');
-    try {
-      const result = await resolveDevelopmentPayment(orderId, attempt.id, outcome, csrfToken);
-      setPaymentAttempts((current) => ({ ...current, [orderId]: result }));
-      if (outcome === 'success') setNotice('Development payment simulated; the order is confirmed for testing only.');
-      await reload();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Payment simulation failed.');
-    } finally {
-      setSaving(false);
-    }
-  }
+  const itemCount = cart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+  const pendingOrders = orders.filter((order) => order.status === 'pending_payment').length;
+  const upcomingReservations = reservations.filter(
+    (reservation) => reservation.status === 'confirmed' && new Date(reservation.startsAt).getTime() > Date.now(),
+  ).length;
 
   return (
-    <div>
-      <p className="mb-3 text-[11px] font-bold uppercase text-coral">Your account</p>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 className="font-display text-[40px] leading-tight">Welcome back.</h2>
-          <p className="mt-2 text-sm text-muted">{account.email}</p>
-          <div className="mt-3 flex flex-wrap gap-4 text-xs font-bold">
-            <Link className="text-leaf hover:text-coral" href="/cafe">Café reservations</Link>
-            {account.role === 'admin' && <Link className="text-leaf hover:text-coral" href="/admin">Administration</Link>}
-            {['cafe_manager', 'waiter'].includes(account.role) && <Link className="text-leaf hover:text-coral" href="/cafe/staff">Café operations</Link>}
-          </div>
+    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 lg:py-14">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sun-ink">Your account</p>
+          <h1 className="mt-2 font-display text-4xl leading-tight sm:text-5xl">Hello there.</h1>
+          <p className="mt-1 truncate text-sm text-muted">{user?.email}</p>
         </div>
-        <button
-          className="min-h-10 border border-ink/20 px-3 text-xs font-bold hover:border-coral hover:text-coral disabled:opacity-60"
-          disabled={busy}
-          onClick={onLogout}
-          type="button"
-        >
-          Sign out
-        </button>
+        <Button loading={signingOut} onClick={() => void handleSignOut()} variant="secondary">
+          <LogOut size={16} aria-hidden="true" /> Sign out
+        </Button>
       </div>
 
-      {error && <p className="mt-5 border-l-4 border-coral bg-white px-4 py-3 text-sm" role="alert">{error}</p>}
-      {notice && <p className="mt-5 border-l-4 border-leaf bg-mint px-4 py-3 text-sm" role="status">{notice}</p>}
-      {loading ? (
-        <p className="mt-8 text-sm text-muted">Loading account details…</p>
-      ) : (
-        <div className="mt-8 grid gap-10">
-          <section aria-labelledby="cart-heading">
-            <div className="flex items-baseline justify-between border-b border-ink/15 pb-3">
-              <h3 className="font-display text-2xl" id="cart-heading">Your basket</h3>
-              <Link className="text-xs font-bold text-leaf hover:text-coral" href="/#collections">Shop coffee &amp; tea</Link>
-            </div>
-            {cart?.items.length ? (
-              <div className="divide-y divide-ink/10">
-                {cart.items.map((item) => (
-                  <div className="grid grid-cols-[1fr_auto] gap-3 py-4" key={item.variantId}>
-                    <div>
-                      <p className="font-semibold">{item.productName}</p>
-                      <p className="mt-1 text-xs text-muted">{item.variantName} · {money.format(item.unitPricePaise / 100)}</p>
-                      {!item.available && <p className="mt-1 text-xs font-bold text-coral">Currently unavailable</p>}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button aria-label={`Remove one ${item.productName}`} className="grid size-8 place-items-center border border-ink/20" disabled={saving} onClick={() => void changeQuantity(item.variantId, item.quantity - 1)} type="button">
-                        <Minus size={14} aria-hidden="true" />
-                      </button>
-                      <span className="w-5 text-center text-sm tabular-nums">{item.quantity}</span>
-                      <button aria-label={`Add one ${item.productName}`} className="grid size-8 place-items-center border border-ink/20" disabled={saving || !item.available} onClick={() => void changeQuantity(item.variantId, item.quantity + 1)} type="button">
-                        <Plus size={14} aria-hidden="true" />
-                      </button>
-                      <button aria-label={`Remove ${item.productName} from basket`} className="ml-1 grid size-8 place-items-center text-muted hover:text-coral" disabled={saving} onClick={() => void changeQuantity(item.variantId, 0)} type="button">
-                        <Trash2 size={15} aria-hidden="true" />
-                      </button>
-                    </div>
-                    <p className="col-span-2 text-right text-xs font-bold">{money.format(item.lineTotalPaise / 100)}</p>
-                  </div>
-                ))}
-                <div className="flex justify-between py-4 text-sm font-bold">
-                  <span>Subtotal</span><span>{money.format(cart.totalPaise / 100)}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="py-5 text-sm text-muted">Your basket is empty.</p>
-            )}
-          </section>
+      <Tabs
+        className="mt-8 w-fit"
+        label="Account sections"
+        onChange={setTab}
+        tabs={[
+          { value: 'basket', label: 'Basket', count: itemCount },
+          { value: 'orders', label: 'Orders', count: pendingOrders },
+          { value: 'reservations', label: 'Reservations', count: upcomingReservations },
+          { value: 'addresses', label: 'Addresses' },
+        ]}
+        value={tab}
+      />
 
-          <section aria-labelledby="delivery-heading">
-            <div className="flex items-baseline justify-between border-b border-ink/15 pb-3">
-              <h3 className="font-display text-2xl" id="delivery-heading">Delivery</h3>
-              <button className="text-xs font-bold text-leaf hover:text-coral" onClick={() => setAddingAddress((value) => !value)} type="button">
-                {addingAddress ? 'Cancel' : 'Add address'}
-              </button>
-            </div>
-            {addingAddress && <AddressForm onSubmit={saveAddress} saving={saving} />}
-            {addresses.length > 0 ? (
-              <div className="mt-4 grid gap-3">
-                {addresses.map((address) => (
-                  <label className={`flex cursor-pointer gap-3 border p-3 text-sm ${selectedAddressId === address.id ? 'border-leaf bg-mint/60' : 'border-ink/15'}`} key={address.id}>
-                    <input checked={selectedAddressId === address.id} className="accent-leaf" name="delivery-address" onChange={() => setSelectedAddressId(address.id)} type="radio" />
-                    <span><strong>{address.recipientName}</strong><br />{address.line1}{address.line2 ? `, ${address.line2}` : ''}, {address.city}, {address.state} {address.pincode}<br /><span className="text-xs text-muted">{address.phone}</span></span>
-                  </label>
-                ))}
-              </div>
-            ) : !addingAddress ? (
-              <p className="py-5 text-sm text-muted">Add a delivery address to continue.</p>
-            ) : null}
-            <button
-              className="mt-4 inline-flex min-h-12 w-full items-center justify-between bg-leaf px-5 text-sm font-bold text-white transition-colors hover:bg-ink disabled:cursor-not-allowed disabled:bg-muted"
-              disabled={saving || !cart?.items.length || !selectedAddressId || cart.items.some((item) => !item.available)}
-              onClick={() => void submitCheckout()}
-              type="button"
-            >
-              Place order · awaiting payment <ArrowUpRight size={17} aria-hidden="true" />
-            </button>
-          </section>
-
-          <section aria-labelledby="orders-heading">
-            <div className="border-b border-ink/15 pb-3"><h3 className="font-display text-2xl" id="orders-heading">Order history</h3></div>
-            {orders.length ? (
-              <div className="divide-y divide-ink/10">
-                {orders.map((order) => (
-                  <OrderSummary
-                    key={order.id}
-                    order={order}
-                    attempt={paymentAttempts[order.id]}
-                    saving={saving}
-                    onStart={() => void beginPayment(order.id)}
-                    onResolve={(outcome) => void resolvePayment(order.id, outcome)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="py-5 text-sm text-muted">No orders yet.</p>
-            )}
-          </section>
-
-          <section aria-labelledby="reservations-heading">
-            <div className="flex items-baseline justify-between border-b border-ink/15 pb-3">
-              <h3 className="font-display text-2xl" id="reservations-heading">Table reservations</h3>
-              <Link className="text-xs font-bold text-leaf" href="/cafe">Find a café</Link>
-            </div>
-            {reservations.length ? <div className="divide-y divide-ink/10">{reservations.map((reservation) => (
-              <div className="flex flex-wrap items-center justify-between gap-3 py-4" key={reservation.id}>
-                <div><p className="font-bold">{reservation.cafe.name} · Table {reservation.table.tableNumber}</p><p className="mt-1 text-xs text-muted">{new Date(reservation.startsAt).toLocaleString('en-IN', { timeZone: reservation.cafe.timezone })} · Party of {reservation.partySize}</p><p className="mt-1 text-[10px] font-bold uppercase text-coral">{reservation.status.replaceAll('_', ' ')}</p></div>
-                {reservation.status === 'confirmed' && <button className="min-h-9 border border-ink/20 px-3 text-xs font-bold hover:border-coral hover:text-coral disabled:opacity-60" disabled={saving} onClick={() => void cancelBooking(reservation.id)} type="button">Cancel</button>}
-              </div>
-            ))}</div> : <p className="py-5 text-sm text-muted">No reservations yet.</p>}
-          </section>
-        </div>
-      )}
+      <div className="mt-8">
+        {loadError ? (
+          <Alert
+            tone="danger"
+            title="We couldn't load your account"
+            action={
+              <Button size="sm" variant="secondary" onClick={() => void load()}>
+                Retry
+              </Button>
+            }
+          >
+            {loadError}
+          </Alert>
+        ) : loading ? (
+          <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+            <Skeleton className="h-72 rounded-3xl" />
+            <Skeleton className="h-72 rounded-3xl" />
+          </div>
+        ) : tab === 'basket' ? (
+          <BasketTab
+            addresses={addresses}
+            cart={cart}
+            onAddressCreated={(address) => setAddresses((current) => [address, ...current])}
+            onCartChange={(next) => {
+              setCart(next);
+              void syncCart(next);
+            }}
+            onOrderPlaced={async (order) => {
+              setHighlightOrderId(order.id);
+              await load();
+              setTab('orders');
+            }}
+          />
+        ) : tab === 'orders' ? (
+          <OrdersTab highlightOrderId={highlightOrderId} onChanged={load} orders={orders} />
+        ) : tab === 'reservations' ? (
+          <ReservationsTab
+            onChange={(updated) =>
+              setReservations((current) => current.map((item) => (item.id === updated.id ? updated : item)))
+            }
+            reservations={reservations}
+          />
+        ) : (
+          <AddressesTab
+            addresses={addresses}
+            onCreated={(address) => setAddresses((current) => [address, ...current])}
+          />
+        )}
+      </div>
     </div>
   );
 }
 
-function AddressForm({ onSubmit, saving }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; saving: boolean }) {
+function BasketTab({
+  cart,
+  addresses,
+  onCartChange,
+  onAddressCreated,
+  onOrderPlaced,
+}: {
+  cart: Cart | null;
+  addresses: DeliveryAddress[];
+  onCartChange: (cart: Cart) => void;
+  onAddressCreated: (address: DeliveryAddress) => void;
+  onOrderPlaced: (order: CustomerOrder) => Promise<void>;
+}) {
+  const toast = useToast();
+  const [pendingVariant, setPendingVariant] = useState('');
+  const [addressId, setAddressId] = useState(addresses[0]?.id ?? '');
+  const [addingAddress, setAddingAddress] = useState(addresses.length === 0);
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!addressId && addresses[0]) setAddressId(addresses[0].id);
+  }, [addresses, addressId]);
+
+  async function changeQuantity(variantId: string, quantity: number): Promise<void> {
+    setPendingVariant(variantId);
+    setError('');
+    try {
+      if (quantity <= 0) {
+        await removeCartItem(variantId);
+        onCartChange(await getCart());
+      } else {
+        onCartChange(await setCartItem(variantId, quantity));
+      }
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'Your basket could not be updated.'));
+    } finally {
+      setPendingVariant('');
+    }
+  }
+
+  async function placeOrder(): Promise<void> {
+    setPlacing(true);
+    setError('');
+    try {
+      const order = await checkout(addressId);
+      onCartChange({ id: cart?.id ?? '', items: [], totalPaise: 0 });
+      toast.show('Order placed. Complete payment to confirm it.');
+      await onOrderPlaced(order);
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'Checkout could not be completed.'));
+    } finally {
+      setPlacing(false);
+    }
+  }
+
+  if (!cart?.items.length) {
+    return (
+      <EmptyState
+        icon={<ShoppingBag size={22} aria-hidden="true" />}
+        title="Your basket is empty"
+        action={<ButtonLink href="/#shop">Browse coffee &amp; tea</ButtonLink>}
+      >
+        Pick something you love and it will wait for you here.
+      </EmptyState>
+    );
+  }
+
+  const unavailable = cart.items.some((item) => !item.available);
+
   return (
-    <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={onSubmit}>
-      <Field label="Recipient name" name="recipientName" required />
-      <Field label="Phone" name="phone" required />
-      <Field className="sm:col-span-2" label="Address line 1" name="line1" required />
-      <Field className="sm:col-span-2" label="Address line 2" name="line2" />
-      <Field label="City" name="city" required />
-      <Field label="State" name="state" required />
-      <Field label="PIN code" name="pincode" required />
-      <button className="min-h-11 bg-ink px-4 text-sm font-bold text-white disabled:opacity-60" disabled={saving} type="submit">
-        Save address
-      </button>
-    </form>
+    <div className="grid items-start gap-6 lg:grid-cols-[1.6fr_1fr]">
+      <Card className="divide-y divide-line">
+        {cart.items.map((item) => (
+          <div className="flex flex-wrap items-center gap-4 p-5" key={item.variantId}>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{item.productName}</p>
+              <p className="mt-0.5 text-sm text-muted">
+                {item.variantName} · {formatPaise(item.unitPricePaise)}
+              </p>
+              {!item.available && (
+                <Badge className="mt-2" tone="danger">
+                  Not available in this quantity
+                </Badge>
+              )}
+            </div>
+            <QuantityStepper
+              disabled={pendingVariant === item.variantId}
+              label={`${item.productName} quantity`}
+              max={item.available ? 100 : item.quantity}
+              min={1}
+              onChange={(next) => void changeQuantity(item.variantId, next)}
+              size="sm"
+              value={item.quantity}
+            />
+            <p className="w-20 text-right font-semibold tabular-nums">{formatPaise(item.lineTotalPaise)}</p>
+            <button
+              aria-label={`Remove ${item.productName}`}
+              className="grid size-9 place-items-center rounded-full text-muted transition hover:bg-danger-soft hover:text-danger disabled:opacity-40"
+              disabled={pendingVariant === item.variantId}
+              onClick={() => void changeQuantity(item.variantId, 0)}
+              type="button"
+            >
+              <Trash2 size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+      </Card>
+
+      <Card className="p-6 lg:sticky lg:top-24">
+        <h2 className="text-lg font-semibold">Checkout</h2>
+
+        <div className="mt-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">Deliver to</p>
+            {addresses.length > 0 && (
+              <button className="text-xs font-semibold underline decoration-sun decoration-2 underline-offset-4" onClick={() => setAddingAddress((value) => !value)} type="button">
+                {addingAddress ? 'Cancel' : 'Add new'}
+              </button>
+            )}
+          </div>
+          {addingAddress ? (
+            <div className="mt-3">
+              <AddressForm
+                compact
+                onSaved={(address) => {
+                  onAddressCreated(address);
+                  setAddressId(address.id);
+                  setAddingAddress(false);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="mt-3 grid gap-2" role="radiogroup" aria-label="Delivery address">
+              {addresses.map((address) => (
+                <label
+                  className={cx(
+                    'flex cursor-pointer gap-3 rounded-2xl border p-3 text-sm transition-colors',
+                    addressId === address.id ? 'border-ink bg-sun-soft' : 'border-line hover:border-ink/40',
+                  )}
+                  key={address.id}
+                >
+                  <input
+                    checked={addressId === address.id}
+                    className="mt-1 accent-ink"
+                    name="delivery-address"
+                    onChange={() => setAddressId(address.id)}
+                    type="radio"
+                  />
+                  <AddressText address={address} />
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <dl className="mt-6 grid gap-2 border-t border-line pt-5 text-sm">
+          <div className="flex justify-between">
+            <dt className="text-muted">Subtotal</dt>
+            <dd className="font-semibold tabular-nums">{formatPaise(cart.totalPaise)}</dd>
+          </div>
+          <div className="flex justify-between text-base">
+            <dt className="font-semibold">Total</dt>
+            <dd className="font-bold tabular-nums">{formatPaise(cart.totalPaise)}</dd>
+          </div>
+        </dl>
+
+        {error && (
+          <Alert className="mt-4" tone="danger">
+            {error}
+          </Alert>
+        )}
+        {unavailable && (
+          <Alert className="mt-4" tone="warning">
+            Remove or reduce unavailable items to continue.
+          </Alert>
+        )}
+
+        <Button
+          block
+          className="mt-5"
+          disabled={!addressId || addingAddress || unavailable}
+          loading={placing}
+          onClick={() => void placeOrder()}
+          size="lg"
+        >
+          Place order
+        </Button>
+        <p className="mt-3 text-center text-xs text-muted">You will be asked to pay on the next step.</p>
+      </Card>
+    </div>
   );
 }
 
-function Field({ label, name, required, className = '' }: { label: string; name: string; required?: boolean; className?: string }) {
+function OrdersTab({
+  orders,
+  highlightOrderId,
+  onChanged,
+}: {
+  orders: CustomerOrder[];
+  highlightOrderId: string;
+  onChanged: () => Promise<void>;
+}) {
+  if (!orders.length) {
+    return (
+      <EmptyState
+        icon={<Package size={22} aria-hidden="true" />}
+        title="No orders yet"
+        action={<ButtonLink href="/#shop">Start shopping</ButtonLink>}
+      >
+        Orders you place will appear here with their status.
+      </EmptyState>
+    );
+  }
   return (
-    <label className={`grid gap-1.5 text-xs font-semibold ${className}`}>
-      {label}
-      <input className="min-h-11 min-w-0 border border-ink/20 bg-white px-3 text-sm outline-none focus:border-leaf" name={name} required={required} />
-    </label>
+    <div className="grid gap-4">
+      {orders.map((order) => (
+        <OrderCard key={order.id} onChanged={onChanged} order={order} startOpen={order.id === highlightOrderId} />
+      ))}
+    </div>
   );
 }
 
-function OrderSummary({
+function OrderCard({
   order,
-  attempt,
-  saving,
-  onStart,
-  onResolve,
+  startOpen,
+  onChanged,
 }: {
   order: CustomerOrder;
-  attempt?: PaymentAttempt;
-  saving: boolean;
-  onStart: () => void;
-  onResolve: (outcome: 'success' | 'failure') => void;
+  startOpen: boolean;
+  onChanged: () => Promise<void>;
+}) {
+  const toast = useToast();
+  const [attempt, setAttempt] = useState<PaymentAttempt | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const awaitingPayment = order.status === 'pending_payment';
+  const reference = order.id.slice(0, 8).toUpperCase();
+
+  async function beginPayment(): Promise<void> {
+    setBusy(true);
+    setError('');
+    try {
+      // Resume an attempt that is still open (e.g. after a page reload) instead of colliding with it.
+      const attempts = await apiRequest<PaymentAttempt[]>(`/orders/${order.id}/payments`);
+      const open = attempts.find((candidate) => candidate.status === 'pending');
+      setAttempt(open ?? (await startPayment(order.id, crypto.randomUUID())));
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'Payment could not be started.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resolve(outcome: 'success' | 'failure'): Promise<void> {
+    if (!attempt) return;
+    setBusy(true);
+    setError('');
+    try {
+      const result = await resolveDevelopmentPayment(order.id, attempt.id, outcome);
+      setAttempt(result);
+      toast.show(outcome === 'success' ? 'Payment received — your order is confirmed.' : 'Payment failed. You can try again.', outcome === 'success' ? 'success' : 'danger');
+      await onChanged();
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'Payment could not be completed.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className={cx('overflow-hidden', startOpen && 'ring-2 ring-sun')}>
+      <details className="group" open={startOpen || awaitingPayment}>
+        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-6 gap-y-2 p-5">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold">Order #{reference}</p>
+            <p className="mt-0.5 text-sm text-muted">
+              {formatDate(order.createdAt)} · {order.items.reduce((sum, item) => sum + item.quantity, 0)} items
+            </p>
+          </div>
+          <StatusBadge status={order.status} />
+          <p className="w-24 text-right font-bold tabular-nums">{formatPaise(order.totalPaise)}</p>
+        </summary>
+        <div className="border-t border-line bg-cloud/60 p-5">
+          <ul className="grid gap-2 text-sm">
+            {order.items.map((item) => (
+              <li className="flex justify-between gap-4" key={item.id}>
+                <span>
+                  {item.quantity} × {item.productName} <span className="text-muted">· {item.variantName}</span>
+                </span>
+                <span className="tabular-nums">{formatPaise(item.lineTotalPaise)}</span>
+              </li>
+            ))}
+          </ul>
+
+          {awaitingPayment && (
+            <div className="mt-5 rounded-2xl border border-sun bg-white p-4">
+              {!attempt || attempt.status !== 'pending' ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm">
+                    {attempt?.status === 'failed' ? 'The last payment failed.' : 'This order is waiting for payment.'}
+                  </p>
+                  <Button loading={busy} onClick={() => void beginPayment()}>
+                    {attempt?.status === 'failed' ? 'Try again' : 'Pay now'} · {formatPaise(order.totalPaise)}
+                  </Button>
+                </div>
+              ) : attempt.developmentSimulationAvailable ? (
+                <div>
+                  <Badge tone="soft">Test mode</Badge>
+                  <p className="mt-2 text-sm text-ink-soft">
+                    No real payment provider is connected. Simulate the outcome — no money is charged.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button loading={busy} onClick={() => void resolve('success')}>
+                      Simulate successful payment
+                    </Button>
+                    <Button disabled={busy} onClick={() => void resolve('failure')} variant="danger">
+                      Simulate failure
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted">Payment is in progress. Refresh in a moment to see the result.</p>
+              )}
+              {error && (
+                <Alert className="mt-3" tone="danger">
+                  {error}
+                </Alert>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
+    </Card>
+  );
+}
+
+function ReservationsTab({
+  reservations,
+  onChange,
+}: {
+  reservations: Reservation[];
+  onChange: (reservation: Reservation) => void;
+}) {
+  const toast = useToast();
+  const [cancelling, setCancelling] = useState('');
+
+  async function cancel(reservation: Reservation): Promise<void> {
+    if (!window.confirm(`Cancel your table at ${reservation.cafe.name}?`)) return;
+    setCancelling(reservation.id);
+    try {
+      onChange(await cancelReservation(reservation.id));
+      toast.show('Reservation cancelled');
+    } catch (requestError) {
+      toast.show(errorMessage(requestError, 'The reservation could not be cancelled.'), 'danger');
+    } finally {
+      setCancelling('');
+    }
+  }
+
+  if (!reservations.length) {
+    return (
+      <EmptyState
+        icon={<CalendarDays size={22} aria-hidden="true" />}
+        title="No reservations yet"
+        action={<ButtonLink href="/cafe">Reserve a table</ButtonLink>}
+      >
+        Book a table at a Coffee-T café and it will show up here.
+      </EmptyState>
+    );
+  }
+
+  const now = Date.now();
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {reservations.map((reservation) => {
+        const upcoming = reservation.status === 'confirmed' && new Date(reservation.startsAt).getTime() > now;
+        return (
+          <Card className={cx('p-5', !upcoming && 'opacity-70')} key={reservation.id}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold">{reservation.cafe.name}</p>
+                <p className="mt-0.5 text-sm text-muted">{reservation.cafe.city}</p>
+              </div>
+              <StatusBadge status={upcoming ? 'confirmed' : reservation.status === 'confirmed' ? 'completed' : reservation.status} />
+            </div>
+            <p className="mt-4 text-sm font-medium">{formatDateTime(reservation.startsAt, reservation.cafe.timezone)}</p>
+            <p className="mt-0.5 text-sm text-muted">
+              Table {reservation.table.tableNumber} · {reservation.partySize} {reservation.partySize === 1 ? 'guest' : 'guests'}
+            </p>
+            {upcoming && (
+              <Button
+                className="mt-4"
+                loading={cancelling === reservation.id}
+                onClick={() => void cancel(reservation)}
+                size="sm"
+                variant="danger"
+              >
+                Cancel reservation
+              </Button>
+            )}
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function AddressesTab({
+  addresses,
+  onCreated,
+}: {
+  addresses: DeliveryAddress[];
+  onCreated: (address: DeliveryAddress) => void;
 }) {
   return (
-    <details className="group py-4">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm">
-        <span className="font-bold">Order {order.id.slice(0, 8).toUpperCase()}</span>
-        <span className="text-xs uppercase text-muted">{order.status.replaceAll('_', ' ')}</span>
-        <span className="font-bold">{money.format(order.totalPaise / 100)}</span>
-      </summary>
-      <div className="mt-3 grid gap-2 border-l-2 border-mint pl-3 text-xs text-muted">
-        {order.items.map((item) => <p key={item.id}>{item.quantity} × {item.productName} · {item.variantName}</p>)}
-        <p>{new Date(order.createdAt).toLocaleDateString('en-IN')}</p>
-        {order.status === 'pending_payment' && !attempt && (
-          <button className="mt-2 min-h-10 w-fit bg-ink px-3 text-xs font-bold text-white disabled:opacity-60" disabled={saving} onClick={onStart} type="button">
-            Start development payment test
-          </button>
-        )}
-        {attempt?.developmentSimulationAvailable && (
-          <div className="mt-2 grid gap-2 border border-sun bg-paper p-3 text-ink">
-            <p className="font-bold uppercase">Development payment simulation only</p>
-            <p>This does not charge money and is disabled in production.</p>
-            <div className="flex flex-wrap gap-2">
-              <button className="min-h-9 bg-leaf px-3 font-bold text-white disabled:opacity-60" disabled={saving} onClick={() => onResolve('success')} type="button">Simulate success</button>
-              <button className="min-h-9 border border-coral px-3 font-bold text-coral disabled:opacity-60" disabled={saving} onClick={() => onResolve('failure')} type="button">Simulate failure</button>
-            </div>
-          </div>
+    <div className="grid items-start gap-6 lg:grid-cols-[1fr_1.1fr]">
+      <div className="grid gap-3">
+        {addresses.length ? (
+          addresses.map((address) => (
+            <Card className="flex gap-3 p-5 text-sm" key={address.id}>
+              <MapPin className="mt-0.5 shrink-0 text-sun-ink" size={18} aria-hidden="true" />
+              <AddressText address={address} />
+            </Card>
+          ))
+        ) : (
+          <EmptyState icon={<MapPin size={22} aria-hidden="true" />} title="No saved addresses">
+            Add one and it will be ready at checkout.
+          </EmptyState>
         )}
       </div>
-    </details>
+      <Card className="p-6">
+        <h2 className="text-lg font-semibold">Add an address</h2>
+        <div className="mt-4">
+          <AddressForm onSaved={onCreated} />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function AddressText({ address }: { address: DeliveryAddress }) {
+  return (
+    <span className="leading-6">
+      <strong className="font-semibold">{address.recipientName}</strong>
+      <br />
+      {address.line1}
+      {address.line2 ? `, ${address.line2}` : ''}
+      <br />
+      {address.city}, {address.state} {address.pincode}
+      <br />
+      <span className="text-muted">{address.phone}</span>
+    </span>
+  );
+}
+
+function AddressForm({ onSaved, compact = false }: { onSaved: (address: DeliveryAddress) => void; compact?: boolean }) {
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function submit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const value = (name: string) => String(data.get(name) ?? '').trim();
+    const input: AddressInput = {
+      recipientName: value('recipientName'),
+      phone: value('phone'),
+      line1: value('line1'),
+      city: value('city'),
+      state: value('state'),
+      pincode: value('pincode'),
+      ...(value('line2') ? { line2: value('line2') } : {}),
+    };
+    setSaving(true);
+    setError('');
+    try {
+      const address = await createAddress(input);
+      form.reset();
+      onSaved(address);
+      toast.show('Address saved');
+    } catch (requestError) {
+      setError(errorMessage(requestError, 'The address could not be saved.'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className={cx('grid gap-3', !compact && 'sm:grid-cols-2')} onSubmit={submit}>
+      <TextField autoComplete="name" label="Full name" maxLength={120} minLength={2} name="recipientName" required />
+      <TextField
+        autoComplete="tel"
+        inputMode="tel"
+        label="Phone"
+        name="phone"
+        pattern="\+?[0-9 \(\)\-]{8,20}"
+        placeholder="+91 98765 43210"
+        required
+        title="8–20 digits; spaces, brackets and dashes are fine"
+      />
+      <TextField autoComplete="address-line1" className={cx(!compact && 'sm:col-span-2')} label="Address line 1" maxLength={160} minLength={3} name="line1" required />
+      <TextField autoComplete="address-line2" className={cx(!compact && 'sm:col-span-2')} label="Address line 2" maxLength={160} name="line2" optional />
+      <TextField autoComplete="address-level2" label="City" maxLength={100} minLength={2} name="city" required />
+      <TextField autoComplete="address-level1" label="State" maxLength={100} minLength={2} name="state" required />
+      <TextField
+        autoComplete="postal-code"
+        inputMode="numeric"
+        label="PIN code"
+        maxLength={6}
+        name="pincode"
+        pattern="[1-9][0-9]{5}"
+        required
+        title="A 6-digit Indian PIN code"
+      />
+      {error && (
+        <Alert className={cx(!compact && 'sm:col-span-2')} tone="danger">
+          {error}
+        </Alert>
+      )}
+      <Button className={cx(!compact && 'sm:col-span-2')} loading={saving} type="submit" variant="dark">
+        Save address
+      </Button>
+    </form>
   );
 }

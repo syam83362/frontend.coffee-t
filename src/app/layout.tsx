@@ -1,5 +1,7 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { DM_Sans, DM_Serif_Display } from 'next/font/google';
+import { SessionProvider } from '@/components/session-provider';
+import { ToastProvider } from '@/components/toast';
 import './globals.css';
 
 const sans = DM_Sans({
@@ -16,15 +18,26 @@ const display = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: 'Coffee-T | Indian Coffee & Tea',
-  description: 'Discover Indian coffee and tea from Coffee-T.',
+  title: {
+    default: 'Coffee-T | Indian Coffee & Tea',
+    template: '%s · Coffee-T',
+  },
+  description: 'Shop single-estate Indian coffee and tea, reserve a table, and order at Coffee-T cafés.',
+};
+
+export const viewport: Viewport = {
+  themeColor: '#ffc914',
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${sans.variable} ${display.variable} font-sans antialiased`}>
-        {children}
+    <html lang="en-IN">
+      <body className={`${sans.variable} ${display.variable} font-sans text-ink antialiased`}>
+        <SessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   );

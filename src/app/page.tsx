@@ -1,93 +1,92 @@
 import Image from 'next/image';
-import Link from 'next/link';
-import { ArrowDownRight, ArrowUpRight, UserRound } from 'lucide-react';
-import { CatalogueSection } from '../components/catalogue-section';
+import { ArrowRight, CalendarCheck, Leaf, Truck } from 'lucide-react';
+import { CatalogueSection } from '@/components/catalogue-section';
+import { SiteShell } from '@/components/site-header';
+import { ButtonLink } from '@/components/ui';
 
-const coffeeImage =
-  'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=2200&q=85';
+const heroImage =
+  'https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=1600&q=80';
+
+const promises = [
+  { icon: Leaf, title: 'Single-estate sourcing', text: 'Coffee and tea traced to the Indian estates that grow them.' },
+  { icon: Truck, title: 'Delivered to your door', text: 'Order online and track every order from your account.' },
+  { icon: CalendarCheck, title: 'Reserve a table', text: 'Book a seat at a Coffee-T café in a few taps.' },
+];
+
 export default function HomePage() {
   return (
-    <main className="min-h-screen overflow-hidden bg-paper text-ink">
-      <div className="bg-coral px-4 py-2 text-center text-[10px] font-bold uppercase text-white sm:text-xs">
-        A little India in every cup <span className="px-2 text-sun">/</span> Coffee-T
-      </div>
-
-      <header className="mx-auto flex h-[76px] max-w-[1440px] items-center justify-between px-5 sm:px-8 lg:px-14">
-        <Link className="flex items-center gap-3" href="/" aria-label="Coffee-T home">
-          <span className="grid size-10 place-items-center bg-leaf font-display text-lg text-white">C</span>
-          <span className="font-display text-[27px] leading-none">coffee-t</span>
-        </Link>
-        <nav className="hidden items-center gap-10 text-sm font-semibold md:flex" aria-label="Main navigation">
-          <a className="transition-colors hover:text-coral" href="#coffee">Coffee</a>
-          <a className="transition-colors hover:text-coral" href="#tea">Tea</a>
-          <a className="transition-colors hover:text-coral" href="#story">Our roots</a>
-          <Link className="transition-colors hover:text-coral" href="/cafe">Find a café</Link>
-        </nav>
-        <Link
-          className="inline-flex min-h-11 items-center gap-2 border border-ink/15 px-4 text-sm font-semibold transition-colors hover:border-leaf hover:bg-leaf hover:text-white"
-          href="/account"
-        >
-          <UserRound size={17} strokeWidth={1.8} aria-hidden="true" />
-          <span className="hidden sm:inline">Your account</span>
-          <span className="sm:hidden">Account</span>
-        </Link>
-      </header>
-
-      <section className="relative isolate mx-auto min-h-[590px] max-w-[1440px] overflow-hidden bg-leaf sm:min-h-[660px] lg:min-h-[700px]" aria-labelledby="store-title">
-        <Image
-          alt="Freshly brewed coffee being poured in a sunlit cafe"
-          className="object-cover object-center"
-          fill
-          priority
-          sizes="100vw"
-          src={coffeeImage}
-        />
-        <div className="absolute inset-0 bg-ink/48" />
-        <div className="absolute inset-y-0 left-0 w-[14px] bg-sun" />
-        <div className="relative flex min-h-[590px] flex-col items-start justify-center px-8 py-16 text-white sm:min-h-[660px] sm:px-14 lg:min-h-[700px] lg:px-24">
-          <p className="mb-7 inline-flex items-center gap-3 text-[11px] font-bold uppercase text-sun sm:text-xs">
-            <span className="h-px w-9 bg-sun" />
+    <SiteShell>
+      <section className="mx-auto grid max-w-7xl items-center gap-10 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-[1.05fr_1fr] lg:gap-14 lg:px-8 lg:pb-24 lg:pt-16">
+        <div>
+          <p className="inline-flex items-center gap-2 rounded-full bg-sun-soft px-3 py-1.5 text-xs font-semibold text-sun-ink">
+            <span className="size-1.5 rounded-full bg-sun-strong" />
             Grown in India. Made for your everyday.
           </p>
-          <h1 id="store-title" className="max-w-[820px] font-display text-[58px] leading-[0.98] sm:text-[76px] lg:text-[92px]">
-            Find your kind
-            <br />
-            of <span className="text-sun">brew.</span>
+          <h1 className="mt-6 font-display text-5xl leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
+            Find your kind of{' '}
+            <span className="relative inline-block">
+              <span className="relative z-10">brew.</span>
+              <span className="absolute inset-x-0 bottom-1 -z-0 h-4 rounded-sm bg-sun sm:h-5" aria-hidden="true" />
+            </span>
           </h1>
-          <p className="mt-7 max-w-[445px] text-base leading-7 text-white/85 sm:text-lg sm:leading-8">
+          <p className="mt-6 max-w-md text-lg leading-8 text-muted">
             Coffee and tea with a sense of place, sourced from the landscapes we call home.
           </p>
-          <a
-            className="mt-9 inline-flex min-h-[54px] items-center gap-8 bg-sun px-6 text-sm font-bold text-ink transition-colors hover:bg-white"
-            href="#collections"
-          >
-            Explore the collection
-            <ArrowDownRight size={18} strokeWidth={2} aria-hidden="true" />
-          </a>
-          <span className="absolute bottom-8 right-8 hidden text-[10px] font-bold uppercase text-white/75 sm:block lg:right-12">
-            12° 58&apos; N / 77° 35&apos; E
-          </span>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <ButtonLink href="#shop" size="lg">
+              Shop the collection <ArrowRight size={18} aria-hidden="true" />
+            </ButtonLink>
+            <ButtonLink href="/cafe" size="lg" variant="secondary">
+              Reserve a table
+            </ButtonLink>
+          </div>
+        </div>
+        <div className="relative">
+          <div className="absolute -right-3 -top-3 h-full w-full rounded-[2rem] bg-sun sm:-right-5 sm:-top-5" aria-hidden="true" />
+          <div className="relative aspect-[4/3] overflow-hidden rounded-[2rem] bg-cloud lg:aspect-[5/4]">
+            <Image
+              alt="Freshly brewed coffee being poured in a sunlit café"
+              className="object-cover"
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              src={heroImage}
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-line bg-cloud">
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:grid-cols-3 sm:px-6 lg:px-8">
+          {promises.map(({ icon: Icon, title, text }) => (
+            <div className="flex gap-4" key={title}>
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-sun text-ink">
+                <Icon size={20} aria-hidden="true" />
+              </span>
+              <div>
+                <p className="font-semibold">{title}</p>
+                <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
       <CatalogueSection />
 
-      <section className="bg-mint px-5 py-16 sm:px-8 sm:py-20 lg:px-14" id="story">
-        <div className="mx-auto grid max-w-[1440px] gap-8 md:grid-cols-[1fr_1.3fr] md:items-end">
-          <p className="text-[11px] font-bold uppercase text-coral">A little closer to home</p>
-          <h2 className="max-w-[780px] font-display text-[38px] leading-[1.12] sm:text-[52px]">
-            Every cup carries a place, a season, and the hands that made it.
-          </h2>
+      <section className="px-4 pb-16 sm:px-6 lg:px-8 lg:pb-24">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-6 rounded-[2rem] bg-sun px-6 py-10 sm:px-10 md:flex-row md:items-center lg:px-14 lg:py-14">
+          <div>
+            <h2 className="font-display text-3xl leading-tight sm:text-4xl">Every cup carries a place.</h2>
+            <p className="mt-2 max-w-lg text-base leading-7 text-ink-soft">
+              Visit a Coffee-T café, order from your table, and taste the season it came from.
+            </p>
+          </div>
+          <ButtonLink href="/cafe" size="lg" variant="dark">
+            Find a café <ArrowRight size={18} aria-hidden="true" />
+          </ButtonLink>
         </div>
       </section>
-
-      <footer className="mx-auto flex max-w-[1440px] flex-col gap-4 px-5 py-8 text-xs font-semibold text-muted sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-14">
-        <span className="font-display text-lg text-ink">coffee-t</span>
-        <span>Good things grow close to home.</span>
-        <Link className="inline-flex items-center gap-2 text-ink hover:text-coral" href="/account">
-          Your account <ArrowUpRight size={14} aria-hidden="true" />
-        </Link>
-      </footer>
-    </main>
+    </SiteShell>
   );
 }

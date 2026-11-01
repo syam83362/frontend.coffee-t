@@ -1,15 +1,24 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-ink: #18251f;
-  --color-leaf: #194a3b;
-  --color-mint: #e7eee4;
-  --color-paper: #f7f8f3;
-  --color-coral: #c95039;
-  --color-sun: #f0c64e;
-  --color-muted: #66736a;
+  --color-ink: #141414;
+  --color-ink-soft: #3d3d3d;
+  --color-muted: #6b6b6b;
+  --color-line: #ececec;
+  --color-paper: #ffffff;
+  --color-cloud: #f7f7f5;
+  --color-sun: #ffc914;
+  --color-sun-strong: #f2b600;
+  --color-sun-soft: #fff6d1;
+  --color-sun-ink: #6b4f00;
+  --color-success: #15803d;
+  --color-success-soft: #e9f7ee;
+  --color-danger: #c62828;
+  --color-danger-soft: #fdecec;
   --font-sans: var(--font-brand-sans);
   --font-display: var(--font-brand-display);
+  --shadow-card: 0 1px 2px rgb(20 20 20 / 0.04), 0 8px 24px -12px rgb(20 20 20 / 0.12);
+  --shadow-pop: 0 12px 40px -12px rgb(20 20 20 / 0.25);
 }
 
 :root {
@@ -17,13 +26,32 @@
 }
 
 body {
-  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
-  background: #f7f8f3;
-  color: #18251f;
+  background: #ffffff;
+  color: #141414;
 }
 
 ::selection {
-  background: #f0c64e;
-  color: #18251f;
+  background: #ffc914;
+  color: #141414;
+}
+
+:focus-visible {
+  outline: 2px solid #141414;
+  outline-offset: 2px;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
